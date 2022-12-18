@@ -65,6 +65,7 @@ static auto g_id_drain_abl = ID_NONE;
 static auto g_id_calm_traveler = ID_NONE;
 static auto g_id_boundary_yokai = ID_NONE;
 static auto g_id_yukari = 55;
+static auto g_life_and_death_id = 842;
 unsigned int g_id_form_change = ID_NONE;
 unsigned int g_id_form_target = ID_NONE;
 unsigned int g_id_form_target_style = ID_NONE;
@@ -166,6 +167,19 @@ void do_terrain_hook()
     }
 }
 
+// Do Message
+static bool do_message(std::string message)
+{
+    clear_battle_text();
+    for(auto _frames = 0; _frames < get_game_fps() * 3; ++_frames)
+        {
+            log_warn((std::wstring(message.begin(), message.end())).c_str());
+            set_battle_text(message);
+            std::this_thread::sleep_for(std::chrono::milliseconds(1/get_game_fps()*1000));
+        }
+    return true;
+}
+
 // called when the battle state is reset
 // before a new battle begins
 void do_battlestate_reset()
@@ -221,6 +235,10 @@ uint do_dmg_calc(BattleState *state, BattleState *otherstate, int player, [[mayb
     //auto eid = skilldata.effect_id;
     auto puppet = decrypt_puppet(state->active_puppet);
     auto otherpuppet = decrypt_puppet(otherstate->active_puppet);
+    static auto reversetypemod = get_type_multiplier(player, otherstate, (uint16_t)state->active_skill_id, state);
+    static auto typemod = get_type_multiplier(player, state, (uint16_t)state->active_skill_id, otherstate);
+    log_warn((L"TypeMod is: " + std::to_wstring(typemod)).c_str());
+    log_warn((L"Reverse TypeMod is: " + std::to_wstring(reversetypemod)).c_str());
 
     if((puppet.held_item == g_id_wyrmprint) && can_use_items(state)) // Radiant Hairpin (AKA wyrmprint)
     {
@@ -274,15 +292,32 @@ uint do_dmg_calc(BattleState *state, BattleState *otherstate, int player, [[mayb
             }
         }
     }
-    else if(((uint)state->active_ability == g_id_boundary_yokai) && 
-        ((get_terrain_state()->terrain_type != TERRAIN_NONE) || (get_terrain_state()->weather_type != WEATHER_NONE)) &&
-        (puppet.puppet_id = g_id_yukari)
-    )
+    else if(((uint)state->active_ability == g_id_boundary_yokai) && (puppet.puppet_id = g_id_yukari))
     {
-        dmg *= g_mod_boundary_yokai_dmg; // Always increase damage dealt when terrain or weather is set; only for Yukari
-        set_battle_text(std::string(state->active_nickname) + " manipulated the\\nboundary and dealt more damage!");
+        int damage_increase_type = 0;
+        if ((get_terrain_state()->terrain_type != TERRAIN_NONE) || (get_terrain_state()->weather_type != WEATHER_NONE))
+        {
+            dmg *= g_mod_boundary_yokai_dmg; // Always increase damage dealt when terrain or weather is set; only for Yukari
+            damage_increase_type += 1;
+        }
+        if(typemod !=0 && typemod < 1) {
+            dmg /= (typemod * typemod); // Type weakness becomes type strength
+            damage_increase_type += 2;
+        }
+        if (damage_increase_type == 1)
+        {
+            do_message(std::string(otherstate->active_nickname) + " manipulated boundaries!");
+        } 
+        else if (damage_increase_type == 2)
+        {
+            do_message(std::string(otherstate->active_nickname) + " weakened enemy\\nbarriers!");
+        }
+        else if (damage_increase_type == 3)
+        {
+            do_message(std::string(otherstate->active_nickname) + " manipulated boundaries\\nand weakened enemy barriers!");
+        }
     }
-    if(((uint)otherstate->active_ability == g_id_boundary_yokai) && (otherpuppet.puppet_id = g_id_yukari))
+    if(((uint)state->active_ability == g_id_boundary_yokai) && (puppet.puppet_id = g_id_yukari))
     {
         int reduced_type = 0;
         if ((get_terrain_state()->terrain_type != TERRAIN_NONE) || (get_terrain_state()->weather_type != WEATHER_NONE))
@@ -290,19 +325,22 @@ uint do_dmg_calc(BattleState *state, BattleState *otherstate, int player, [[mayb
             dmg /= g_mod_boundary_yokai_def; // Always reduce incoming damage when terrain or weather is set; only for Yukari
             reduced_type += 1;
         }
-        static auto typemod = get_type_multiplier(player, state, (uint16_t)state->active_skill_id, otherstate);
         if (typemod > 1)
         {
-            dmg /= typemod/2; // Remove all type weaknesses
-            reduced_type += 1;
+            dmg /= (typemod * typemod); // Type weakness becomes type strength
+            reduced_type += 2;
         }
-        if (reduced_type == 2)
+        if (reduced_type == 1)
         {
-            set_battle_text(std::string(otherstate->active_nickname) + " manipulated the\\nboundary and took far less damage!");
+            do_message(std::string(otherstate->active_nickname) + " manipulated boundaries!");
         } 
         else if (reduced_type == 2)
         {
-            set_battle_text(std::string(otherstate->active_nickname) + " manipulated the\\nboundary and took less damage!");
+            do_message(std::string(otherstate->active_nickname) + " strengthen their\\nbarriers!");
+        }
+        else if (reduced_type == 3)
+        {
+            do_message(std::string(otherstate->active_nickname) + " manipulated boundaries\\nand strengthen their barriers!");
         }
     }
 
@@ -685,7 +723,7 @@ static bool do_item(int player)
     switch(_state)
     {
     case 0:
-        if((puppet.held_item == g_id_suzaku_seed) && (get_terrain_state()->terrain_type == TERRAIN_SUZAKU) && can_use_items(state) && do_suzaku_seed(player))
+        if((puppet.held_item == g_id_suzaku_seed) && (get_terrain_state()->terrain_type == TERRAIN_SUZAKU) && can_use_items(state) && do_suzaku_seed(player) && do_yukari_defense(player))
             return true;
         _state = 1;
         return true;
@@ -1888,6 +1926,7 @@ void init_misc_hacks()
     g_id_boundary_yokai = IniFile::global.get_uint("abilities", "id_boundary_yokai");
     g_mod_boundary_yokai_dmg = IniFile::global.get_uint("abilities", "mod_boundary_yokai_dmg");
     g_mod_boundary_yokai_def = IniFile::global.get_uint("abilities", "mod_boundary_yokai_def");
+    g_life_and_death_id = IniFile::global.get_uint("abilities", "life_and_death_id");
     g_id_yukari = IniFile::global.get_uint("abilities", "id_yukari");
     g_id_form_change = IniFile::global.get_uint("abilities", "id_form_change");
     g_id_form_target = IniFile::global.get_uint("abilities", "id_form_target");
