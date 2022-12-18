@@ -53,6 +53,8 @@ static auto g_mod_seiryu_seed = 4.0 / 3.0;
 static auto g_mod_suzaku_seed = 1.0 / 8.0;
 static auto g_mod_resheal = 1.0 / 8.0;
 static auto g_power_giant_bit = 120u;
+static auto g_mod_boundary_yokai_dmg = 2.0;
+static auto g_mod_boundary_yokai_def = 2.0;
 
 // ability IDs
 static auto g_id_stacking = ID_NONE;
@@ -61,6 +63,8 @@ static auto g_id_astronomy = ID_NONE;
 static auto g_id_empowered = ID_NONE;
 static auto g_id_drain_abl = ID_NONE;
 static auto g_id_calm_traveler = ID_NONE;
+static auto g_id_boundary_yokai = ID_NONE;
+static auto g_id_yukari = 55;
 unsigned int g_id_form_change = ID_NONE;
 unsigned int g_id_form_target = ID_NONE;
 unsigned int g_id_form_target_style = ID_NONE;
@@ -270,6 +274,37 @@ uint do_dmg_calc(BattleState *state, BattleState *otherstate, int player, [[mayb
             }
         }
     }
+    else if(((uint)state->active_ability == g_id_boundary_yokai) && 
+        ((get_terrain_state()->terrain_type != TERRAIN_NONE) || (get_terrain_state()->weather_type != WEATHER_NONE)) &&
+        (puppet.puppet_id = g_id_yukari)
+    )
+    {
+        dmg *= g_mod_boundary_yokai_dmg; // Always increase damage dealt when terrain or weather is set; only for Yukari
+        set_battle_text(std::string(state->active_nickname) + " manipulated the\\nboundary and dealt more damage!");
+    }
+    if(((uint)otherstate->active_ability == g_id_boundary_yokai) && (otherpuppet.puppet_id = g_id_yukari))
+    {
+        int reduced_type = 0;
+        if ((get_terrain_state()->terrain_type != TERRAIN_NONE) || (get_terrain_state()->weather_type != WEATHER_NONE))
+        {
+            dmg /= g_mod_boundary_yokai_def; // Always reduce incoming damage when terrain or weather is set; only for Yukari
+            reduced_type += 1;
+        }
+        static auto typemod = get_type_multiplier(player, state, (uint16_t)state->active_skill_id, otherstate);
+        if (typemod > 1)
+        {
+            dmg /= typemod/2; // Remove all type weaknesses
+            reduced_type += 1;
+        }
+        if (reduced_type == 2)
+        {
+            set_battle_text(std::string(otherstate->active_nickname) + " manipulated the\\nboundary and took far less damage!");
+        } 
+        else if (reduced_type == 2)
+        {
+            set_battle_text(std::string(otherstate->active_nickname) + " manipulated the\\nboundary and took less damage!");
+        }
+    }
 
     if((int)dmg < 0)
     {
@@ -443,8 +478,8 @@ static bool do_suzaku_seed(int player)
         auto name = std::string(otherstate->active_nickname);
         bool english = tpdp_eng_translation();
         if(player == 0)
-            name = (english ? "Enemy " : "‘ŠŽè‚Ì@") + name;
-        if(set_battle_text(name + (english ? " took damage from the\\nSpirit Torch!" : "‚Í@ƒXƒsƒŠƒbƒgƒg[ƒ`‚Å\\nƒ_ƒ[ƒW‚ð@Žó‚¯‚½I")) != 1)
+            name = (english ? "Enemy " : "ï¿½ï¿½ï¿½ï¿½Ì@") + name;
+        if(set_battle_text(name + (english ? " took damage from the\\nSpirit Torch!" : "ï¿½Í@ï¿½Xï¿½sï¿½ï¿½ï¿½bï¿½gï¿½gï¿½[ï¿½`ï¿½ï¿½\\nï¿½_ï¿½ï¿½ï¿½[ï¿½Wï¿½ï¿½ï¿½@ï¿½ó‚¯‚ï¿½ï¿½I")) != 1)
         {
             if(++_frames > get_game_fps())
             {
@@ -571,6 +606,18 @@ static bool do_future(int player)
             auto otherpuppet = decrypt_puppet(otherstate->active_puppet);
             auto maxhp = calculate_stat(STAT_HP, &otherpuppet);
             auto dmg = (uint)(0.3 * typemod * maxhp);
+            if(((uint)otherstate->active_ability == g_id_boundary_yokai) && (otherpuppet.puppet_id = g_id_yukari))
+            {
+                if ((get_terrain_state()->terrain_type != TERRAIN_NONE) || (get_terrain_state()->weather_type != WEATHER_NONE))
+                {
+                    dmg /= g_mod_boundary_yokai_def; // Always reduce incoming damage when terrain or weather is set; only for Yukari
+                }
+                if (typemod > 1)
+                {
+                    dmg /= typemod/2; // Remove all type weaknesses for attacks
+                }
+            }
+
             dmg = std::max(std::min(dmg, (uint)otherstate->active_puppet->hp), 1u);
             otherstate->active_puppet->hp -= (ushort)dmg;
             clear_battle_text();
@@ -587,8 +634,8 @@ static bool do_future(int player)
         auto name = std::string(otherstate->active_nickname);
         bool english = tpdp_eng_translation();
         if(player == 0)
-            name = (english ? "Enemy " : "‘ŠŽè‚Ì@") + name;
-        auto msg = name + (english ? " was hit by a bomb!" : " ‚É ”š’e‚ª –½’†‚µ‚½I");
+            name = (english ? "Enemy " : "ï¿½ï¿½ï¿½ï¿½Ì@") + name;
+        auto msg = name + (english ? " was hit by a bomb!" : " ï¿½ï¿½ ï¿½ï¿½ï¿½eï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½I");
         if(set_battle_text(msg) != 1)
         {
             if(++_frames > get_game_fps())
@@ -605,7 +652,7 @@ static bool do_future(int player)
     case 2:
     {
         bool english = tpdp_eng_translation();
-        if(set_battle_text(english ? "A bomb detonated!\\nBut it had no effect..." : "”š’e‚ª ”š”­‚µ‚½I\\n‚µ‚©‚µ Œø‰Ê‚ª–³‚¢‚æ‚¤‚¾cc") != 1)
+        if(set_battle_text(english ? "A bomb detonated!\\nBut it had no effect..." : "ï¿½ï¿½ï¿½eï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½I\\nï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½Ê‚ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½æ‚¤ï¿½ï¿½ï¿½cï¿½c") != 1)
         {
             if(++_frames > get_game_fps())
             {
@@ -940,8 +987,8 @@ static int do_giant_bit(int player)
         auto name = std::string(state->active_nickname);
         bool english = tpdp_eng_translation();
         if(player != 0)
-            name = (english ? "Enemy " : "‘ŠŽè‚Ì@") + name;
-        if(set_battle_text(name + (english ? " took damage from the\\nGiant Bit!" : "‚Í@‘åŒ^ƒrƒbƒg‚Ì\\n‘Å‚¿•Ô‚µ‚Å@ƒ_ƒ[ƒW‚ð@Žó‚¯‚½I")) != 1)
+            name = (english ? "Enemy " : "ï¿½ï¿½ï¿½ï¿½Ì@") + name;
+        if(set_battle_text(name + (english ? " took damage from the\\nGiant Bit!" : "ï¿½Í@ï¿½ï¿½^ï¿½rï¿½bï¿½gï¿½ï¿½\\nï¿½Å‚ï¿½ï¿½Ô‚ï¿½ï¿½Å@ï¿½_ï¿½ï¿½ï¿½[ï¿½Wï¿½ï¿½ï¿½@ï¿½ó‚¯‚ï¿½ï¿½I")) != 1)
         {
             if(++_frames > get_game_fps())
             {
@@ -1091,16 +1138,16 @@ static int do_resheal(int player)
             return 0;
         }
         constexpr auto enheal = " recovered HP with\\nAbsorber!";
-        constexpr auto jpheal = "‚Í@ƒAƒuƒ\[ƒo[‚Å\\n‘Ì—Í‚ð@‰ñ•œ‚µ‚½I";
+        constexpr auto jpheal = "ï¿½Í@ï¿½Aï¿½uï¿½\ï¿½[ï¿½oï¿½[ï¿½ï¿½\\nï¿½Ì—Í‚ï¿½ï¿½@ï¿½ñ•œ‚ï¿½ï¿½ï¿½ï¿½I";
         constexpr auto endrain = " has lost HP due to Suzaku!";
-        constexpr auto jpdrain = "‚Í Žé‚É\\n‘Ì—Í‚ð ’D‚í‚ê‚½cc";
+        constexpr auto jpdrain = "ï¿½ï¿½ ï¿½éï¿½ï¿½\\nï¿½Ì—Í‚ï¿½ ï¿½Dï¿½ï¿½ê‚½ï¿½cï¿½c";
         auto name = std::string(otherstate->active_nickname);
         bool english = tpdp_eng_translation();
         bool drain = get_terrain_state()->terrain_type == TERRAIN_SUZAKU;
         auto enmsg = drain ? endrain : enheal;
         auto jpmsg = drain ? jpdrain : jpheal;
         if(player == 0)
-            name = (english ? "Enemy " : "‘ŠŽè‚Ì@") + name;
+            name = (english ? "Enemy " : "ï¿½ï¿½ï¿½ï¿½Ì@") + name;
         if(set_battle_text(name + (english ? enmsg : jpmsg)) != 1)
         {
             if(++_frames > get_game_fps())
@@ -1269,8 +1316,8 @@ int do_form_change(int player, int pid, int style, bool switchin)
         auto name = std::string(state->active_nickname);
         bool english = tpdp_eng_translation();
         if(player != 0)
-            name = (english ? "Enemy " : "‘ŠŽè‚Ì@") + name;
-        if(set_battle_text(name + (english ? " has changed appearance!" : "‚Í Žp‚ª•Ï‚í‚Á‚½I")) != 1)
+            name = (english ? "Enemy " : "ï¿½ï¿½ï¿½ï¿½Ì@") + name;
+        if(set_battle_text(name + (english ? " has changed appearance!" : "ï¿½ï¿½ ï¿½pï¿½ï¿½ï¿½Ï‚ï¿½ï¿½ï¿½ï¿½ï¿½I")) != 1)
         {
             if(++_frames > get_game_fps())
             {
@@ -1345,8 +1392,8 @@ static int do_curse(int player)
         auto name = std::string(state->active_nickname);
         bool english = tpdp_eng_translation();
         if(player != 0)
-            name = (english ? "Enemy " : "‘ŠŽè‚Ì@") + name;
-        auto msg = name + (english ? " has been cursed!" : " ‚ÍŽô‚í‚ê‚Ä‚µ‚Ü‚Á‚½I");
+            name = (english ? "Enemy " : "ï¿½ï¿½ï¿½ï¿½Ì@") + name;
+        auto msg = name + (english ? " has been cursed!" : " ï¿½ÍŽï¿½ï¿½ï¿½Ä‚ï¿½ï¿½Ü‚ï¿½ï¿½ï¿½ï¿½I");
         if(set_battle_text(msg.c_str()) != 1)
         {
             if(++_frames > get_game_fps())
@@ -1776,7 +1823,7 @@ void init_misc_hacks()
     if(tpdp_eng_translation())
         patch_memory(RVA(0x4335e8), "Alternate", 10);
     else
-        patch_memory(RVA(0x4335e8), "ƒXƒyƒVƒƒƒ‹", 11);
+        patch_memory(RVA(0x4335e8), "ï¿½Xï¿½yï¿½Vï¿½ï¿½ï¿½ï¿½", 11);
 
     // patch matchmaking and website addresses
     g_website_url = IniFile::global["network"]["website_addr"];
@@ -1838,6 +1885,10 @@ void init_misc_hacks()
     g_id_empowered = IniFile::global.get_uint("abilities", "id_en_abl");
     g_id_drain_abl = IniFile::global.get_uint("abilities", "id_drain_abl");
     g_id_calm_traveler = IniFile::global.get_uint("abilities", "id_calm_traveler");
+    g_id_boundary_yokai = IniFile::global.get_uint("abilities", "id_boundary_yokai");
+    g_mod_boundary_yokai_dmg = IniFile::global.get_uint("abilities", "mod_boundary_yokai_dmg");
+    g_mod_boundary_yokai_def = IniFile::global.get_uint("abilities", "mod_boundary_yokai_def");
+    g_id_yukari = IniFile::global.get_uint("abilities", "id_yukari");
     g_id_form_change = IniFile::global.get_uint("abilities", "id_form_change");
     g_id_form_target = IniFile::global.get_uint("abilities", "id_form_target");
     g_id_form_target_style = IniFile::global.get_uint("abilities", "id_form_target_style");
